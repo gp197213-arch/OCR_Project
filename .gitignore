@@ -1,0 +1,32 @@
+# Виртуальное окружение
+ocr_env/
+__pycache__/
+*.pyc
+*.pyo
+
+# Клонированный репозиторий SwinIR
+SwinIR/
+
+# Временные файлы и результаты OCR
+capture_raw.png
+capture_upscaled.png
+recognize_output.txt
+test_input.png
+test_output_swinir.png
+test_output.png
+
+# Модели
+*.pth
+*.safetensors
+*.ckpt
+*.onnx
+
+# Логи и системные файлы
+*.log
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
