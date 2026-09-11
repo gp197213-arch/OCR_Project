@@ -106,58 +106,82 @@ def run_ocr(image_path):
     return ""
 
 
-# ============ 4. Окно выбора строки ============
+# ============ 4. Окно выбора текста (полный экран) ============
 class TextChooser:
-    def __init__(self, lines):
+    def __init__(self, text):
         self.selected = None
         self.root = tk.Tk()
         self.root.title("Выберите текст")
         self.root.attributes('-topmost', True)
-        self.root.geometry("600x400")
+        self.root.attributes('-fullscreen', True)
 
-        big_font = tkfont.Font(family="Arial", size=14)
+        big_font = tkfont.Font(family="Consolas", size=14)
 
-        tk.Label(self.root, text="Кликните на нужную строку — она попадёт в буфер обмена",
-                 font=("Arial", 11), pady=8).pack()
+        # Блок кнопок — прилипает к низу
+        btn_frame = tk.Frame(self.root)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10, side=tk.BOTTOM)
 
-        # Прокручиваемая область со списком
+        tk.Button(
+            btn_frame, text="Копировать выделенное", font=("Arial", 12),
+            command=self.copy_selected, bg='#4a90d9', fg='white', padx=20, pady=5
+        ).pack(side=tk.LEFT, padx=5)
+
+        tk.Button(
+            btn_frame, text="Копировать всё", font=("Arial", 12),
+            command=self.copy_all, padx=20, pady=5
+        ).pack(side=tk.LEFT, padx=5)
+
+        tk.Button(
+            btn_frame, text="Отмена", font=("Arial", 12),
+            command=self.root.destroy, padx=20, pady=5
+        ).pack(side=tk.RIGHT, padx=5)
+
+        # Подсказка — сверху
+        tk.Label(
+            self.root,
+            text="Выделите фрагмент и нажмите «Копировать выделенное», или «Копировать всё»",
+            font=("Arial", 12), pady=8
+        ).pack(side=tk.TOP)
+
+        # Текстовое поле — занимает оставшееся место
         frame = tk.Frame(self.root)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         scrollbar = tk.Scrollbar(frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.listbox = tk.Listbox(
-            frame, yscrollcommand=scrollbar.set,
-            font=big_font, activestyle='none',
+        self.text_widget = tk.Text(
+            frame, wrap=tk.WORD, font=big_font,
+            yscrollcommand=scrollbar.set,
             selectbackground='#4a90d9', selectforeground='white'
         )
-        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.listbox.yview)
+        self.text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.text_widget.yview)
 
-        for line in lines:
-            self.listbox.insert(tk.END, line)
+        self.text_widget.insert('1.0', text)
+        self.text_widget.focus_set()
 
-        # Одиночный клик = выбор
-        self.listbox.bind('<ButtonRelease-1>', self.on_click)
-        # Двойной клик = выбор (для надёжности)
-        self.listbox.bind('<Double-Button-1>', self.on_click)
-        # Enter = выбрать текущий
-        self.listbox.bind('<Return>', self.on_click)
-        # Esc = отмена
+        # Горячие клавиши
+        self.root.bind('<Control-c>', lambda e: self.copy_selected())
+        self.root.bind('<Control-Shift-C>', lambda e: self.copy_all())
         self.root.bind('<Escape>', lambda e: self.root.destroy())
-
-        if lines:
-            self.listbox.selection_set(0)
-            self.listbox.activate(0)
 
         self.root.mainloop()
 
-    def on_click(self, event=None):
-        sel = self.listbox.curselection()
-        if sel:
-            self.selected = self.listbox.get(sel[0])
+    def copy_selected(self):
+        try:
+            selected = self.text_widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+        except tk.TclError:
+            selected = ""
+        if selected:
+            self.selected = selected
             self.root.destroy()
+        else:
+            self.copy_all()
+
+    def copy_all(self):
+        self.selected = self.text_widget.get('1.0', tk.END).strip()
+        self.root.destroy()
 
     def get_selected(self):
         return self.selected
@@ -192,17 +216,16 @@ def main():
         print("Текст не распознан.")
         return
 
-    lines = [l for l in text.split('\n') if l.strip()]
-    print(f"Распознано строк: {len(lines)}")
+    print(f"Распознано символов: {len(text)}")
+    print("4. Просмотр текста...")
 
-    print("4. Выберите строку в окне...")
-    chooser = TextChooser(lines)
+    chooser = TextChooser(text)
     selected = chooser.get_selected()
 
     if selected:
         pyperclip.copy(selected)
         print(f"\n=== Скопировано в буфер обмена ===")
-        print(selected)
+        print(selected[:200])
         print("===================================")
     else:
         print("Отменено.")
