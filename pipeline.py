@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import torch
 import pyperclip
+import requests
 
 sys.path.append(r"E:\OCR_Project\SwinIR")
 from models.network_swinir import SwinIR as net
@@ -17,9 +18,11 @@ RAW_PATH = r"E:\OCR_Project\capture_raw.png"
 UPSCALED_PATH = r"E:\OCR_Project\capture_upscaled.png"
 OCR_PYTHON = r"E:\OCR_Project\ocr_env\Scripts\python.exe"
 RECOGNIZE_SCRIPT = r"E:\OCR_Project\recognize.py"
-OUTPUT_FILE = r"E:\OCR_Project\recognize_output.txt"
 SWINIR_MODEL = r"E:\OCR_Project\SwinIR\model_zoo\swinir\001_classicalSR_DF2K_s64w8_SwinIR-M_x2.pth"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Кэш SwinIR — грузится один раз
+_swinir_model = None
 
 
 # ============ 1. Выделение области ============
@@ -80,6 +83,16 @@ def load_swinir():
     return model
 
 
+def get_swinir():
+    """Возвращает SwinIR из кэша. Загружает только при первом вызове."""
+    global _swinir_model
+    if _swinir_model is None:
+        print(">>> Загрузка SwinIR (один раз)...")
+        _swinir_model = load_swinir()
+        print(">>> SwinIR готова.")
+    return _swinir_model
+
+
 def upscale(model, image_bgr):
     img = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     img = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).to(DEVICE)
@@ -100,10 +113,47 @@ def run_ocr(image_path):
         print("OCR error:")
         print(result.stderr)
         return ""
-    if os.path.exists(OUTPUT_FILE):
-        with open(OUTPUT_FILE, 'r', encoding='utf-8') as f:
-            return f.read().strip()
-    return ""
+    return result.stdout.strip()
+
+
+# ============ 3.5. Коррекция OCR через Saiga Llama 3 8B ============
+LLAMA_URL = "http://localhost:8080/v1/chat/completions"
+LLAMA_MODEL = "saiga"
+
+
+def fix_ocr_with_ai(text: str) -> str:
+    """Исправляет ошибки OCR через Saiga Llama 3 8B (llama.cpp)."""
+    if not text.strip():
+        return text
+
+    payload = {
+        "model": LLAMA_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Ты корректор текста после OCR. Исправь ошибки распознавания: "
+                    "замени латинские буквы на кириллические, убери лишние пробелы, "
+                    "раздели склеенные слова. Сохрани смысл и пунктуацию. "
+                    "Верни ТОЛЬКО исправленный текст, без пояснений."
+                ),
+            },
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0.1,
+    }
+
+    try:
+        response = requests.post(LLAMA_URL, json=payload, timeout=180)
+        response.raise_for_status()
+        fixed = response.json()["choices"][0]["message"]["content"].strip()
+        return fixed if fixed else text
+    except requests.ConnectionError:
+        print("[AI] llama-server не запущен. Пропускаю коррекцию.")
+        return text
+    except Exception as e:
+        print(f"[AI] Ошибка: {e}")
+        return text
 
 
 # ============ 4. Окно выбора текста (полный экран) ============
@@ -117,7 +167,6 @@ class TextChooser:
 
         big_font = tkfont.Font(family="Consolas", size=14)
 
-        # Блок кнопок — прилипает к низу
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(fill=tk.X, padx=10, pady=10, side=tk.BOTTOM)
 
@@ -136,14 +185,12 @@ class TextChooser:
             command=self.root.destroy, padx=20, pady=5
         ).pack(side=tk.RIGHT, padx=5)
 
-        # Подсказка — сверху
         tk.Label(
             self.root,
             text="Выделите фрагмент и нажмите «Копировать выделенное», или «Копировать всё»",
             font=("Arial", 12), pady=8
         ).pack(side=tk.TOP)
 
-        # Текстовое поле — занимает оставшееся место
         frame = tk.Frame(self.root)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
@@ -161,7 +208,6 @@ class TextChooser:
         self.text_widget.insert('1.0', text)
         self.text_widget.focus_set()
 
-        # Горячие клавиши
         self.root.bind('<Control-c>', lambda e: self.copy_selected())
         self.root.bind('<Control-Shift-C>', lambda e: self.copy_all())
         self.root.bind('<Escape>', lambda e: self.root.destroy())
@@ -203,8 +249,8 @@ def main():
     img.save(RAW_PATH)
     print(f"Сохранено: {RAW_PATH}")
 
-    print("2. Апскейл SwinIR x2...")
-    model = load_swinir()
+    print("2. Апскейл SwinIR x2 (модель из кэша)...")
+    model = get_swinir()
     raw_bgr = cv2.imread(RAW_PATH)
     upscaled = upscale(model, raw_bgr)
     cv2.imwrite(UPSCALED_PATH, upscaled)
@@ -217,6 +263,11 @@ def main():
         return
 
     print(f"Распознано символов: {len(text)}")
+
+    print("3.5. Коррекция нейросетью Saiga Llama 3 8B...")
+    text = fix_ocr_with_ai(text)
+    print(f"После коррекции символов: {len(text)}")
+
     print("4. Просмотр текста...")
 
     chooser = TextChooser(text)

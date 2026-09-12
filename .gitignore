@@ -1,5 +1,7 @@
 # Виртуальное окружение
 ocr_env/
+venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
@@ -7,19 +9,22 @@ __pycache__/
 # Клонированный репозиторий SwinIR
 SwinIR/
 
-# Временные файлы и результаты OCR
-capture_raw.png
-capture_upscaled.png
-recognize_output.txt
-test_input.png
-test_output_swinir.png
-test_output.png
-
-# Модели
+# Модели (большие файлы — не для GitHub)
+models/
+*.gguf
 *.pth
 *.safetensors
 *.ckpt
 *.onnx
+
+# Временные файлы и результаты OCR
+capture_raw.png
+capture_upscaled.png
+recognize_output.txt
+debug_result_*.json
+test_input.png
+test_output_swinir.png
+test_output.png
 
 # Логи и системные файлы
 *.log

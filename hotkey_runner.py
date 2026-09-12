@@ -1,10 +1,8 @@
 import sys
-import os
-import subprocess
 import keyboard
 
-PIPELINE = r"E:\OCR_Project\pipeline.py"
-PYTHON = sys.executable
+sys.path.append(r"E:\OCR_Project")
+import pipeline
 
 running = False
 
@@ -17,7 +15,7 @@ def launch_pipeline():
     running = True
     print("\n>>> Запуск пайплайна...")
     try:
-        subprocess.run([PYTHON, PIPELINE], check=False)
+        pipeline.main()
     except Exception as e:
         print(f"Ошибка запуска: {e}")
     finally:
@@ -31,7 +29,11 @@ def main():
     print("Выход: Ctrl+C в этом окне")
     print("=" * 50)
 
-    # Скан-код 41 — физическая клавиша 'ё' / '`' / '~'
+    # Прогрев — SwinIR грузится ОДИН РАЗ здесь
+    print(">>> Прогрев моделей...")
+    pipeline.get_swinir()
+    print(">>> Прогрев завершён.")
+
     keyboard.add_hotkey(41, launch_pipeline)
 
     print(">>> Готов. Нажмите 'ё' для захвата.")
